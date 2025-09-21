@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Register Voter</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+
+<div class="container mt-5">
+  <div class="row justify-content-center">
+    <div class="col-md-6">
+      <div class="card shadow-lg">
+        <div class="card-body">
+          <h4 class="card-title text-center mb-4">Register Voter</h4>
+
+          <!-- Form -->
+          <form id="registerForm" enctype="multipart/form-data">
+            <div class="mb-3">
+              <label class="form-label">Full Name</label>
+              <input type="text" class="form-control" name="name" required>
+            </div>
+
+            <!-- Camera Section -->
+            <div class="mb-3 text-center">
+              <video id="video" width="100%" height="240" autoplay class="border"></video>
+              <button type="button" id="captureBtn" class="btn btn-secondary mt-2">Capture</button>
+              <canvas id="canvas" class="d-none"></canvas>
+              <img id="preview" class="img-fluid mt-2 d-none"/>
+            </div>
+
+            <!-- Hidden input -->
+            <input type="hidden" name="image" id="capturedImage">
+
+            <button type="submit" class="btn btn-primary w-100">Register</button>
+          </form>
+
+          <div id="msg" class="mt-3"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const video = document.getElementById("video");
+  const canvas = document.getElementById("canvas");
+  const preview = document.getElementById("preview");
+  const captureBtn = document.getElementById("captureBtn");
+  const capturedImage = document.getElementById("capturedImage");
+
+  // Access camera
+  navigator.mediaDevices.getUserMedia({ video: true })
+    .then(stream => {
+      video.srcObject = stream;
+    })
+    .catch(err => {
+      alert("Camera access denied: " + err);
+    });
+
+  // Capture image
+  captureBtn.addEventListener("click", () => {
+    const ctx = canvas.getContext("2d");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    const dataURL = canvas.toDataURL("image/png");
+    capturedImage.value = dataURL;
+
+    // Show preview
+    preview.src = dataURL;
+    preview.classList.remove("d-none");
+  });
+
+  // Handle form submission
+  document.getElementById("registerForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const formData = new FormData();
+    formData.append("name", e.target.name.value);
+
+    // Ensure image captured
+    if (!capturedImage.value) {
+      document.getElementById("msg").innerHTML =
+        `<div class="alert alert-danger">Please capture your face before submitting.</div>`;
+      return;
+    }
+
+    // Convert base64 to blob
+    const res = await fetch(capturedImage.value);
+    const blob = await res.blob();
+    formData.append("image", blob, "capture.png");
+
+    const response = await fetch("/register", {
+      method: "POST",
+      body: formData
+    });
+
+    const result = await response.json();
+    document.getElementById("msg").innerHTML =
+      `<div class="alert alert-${result.success ? "success" : "danger"}">${result.message || result.error}</div>`;
+  });
+</script>
+</body>
+</html>

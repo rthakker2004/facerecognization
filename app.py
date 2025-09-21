@@ -1,4 +1,4 @@
-import os
+import os 
 import io
 import sqlite3
 import numpy as np
@@ -26,8 +26,17 @@ def get_db():
 
 def init_db():
     db = get_db()
-    db.execute('''CREATE TABLE IF NOT EXISTS voters (id INTEGER PRIMARY KEY, name TEXT UNIQUE, embedding BLOB)''')
-    db.execute('''CREATE TABLE IF NOT EXISTS votes (id INTEGER PRIMARY KEY, voter_id INTEGER, candidate TEXT, ts DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+    db.execute('''CREATE TABLE IF NOT EXISTS voters (
+        id INTEGER PRIMARY KEY, 
+        name TEXT UNIQUE, 
+        embedding BLOB
+    )''')
+    db.execute('''CREATE TABLE IF NOT EXISTS votes (
+        id INTEGER PRIMARY KEY, 
+        voter_id INTEGER, 
+        candidate TEXT, 
+        ts DATETIME DEFAULT CURRENT_TIMESTAMP
+    )''')
     db.commit()
 
 @app.before_first_request
@@ -59,7 +68,7 @@ def find_best_match(emb, threshold=0.35):
     sims = cosine_similarity(emb, embeddings)[0]
     best_idx = int(sims.argmax())
     best_score = float(sims[best_idx])
-    if 1 - best_score < threshold:
+    if best_score > 0.65:  # threshold for same person
         return ids[best_idx], names[best_idx]
     return None, None
 
@@ -71,17 +80,30 @@ def index():
 def register():
     if request.method == 'GET':
         return render_template('register.html')
+    
     name = request.form.get('name','').strip()
     img_file = request.files.get('image')
     if not name or not img_file:
         return jsonify({'success': False, 'error': 'name and image required'}), 400
+    
     img = Image.open(io.BytesIO(img_file.read())).convert('RGB')
     img = np.array(img)[:, :, ::-1]
     faces = model.get(img)
     if not faces:
         return jsonify({'success': False, 'error': 'no face detected'}), 400
+    
     emb = faces[0].embedding.astype('float32')
+
+    # --- New duplicate face check ---
     db = get_db()
+    rows = db.execute('SELECT id, name, embedding FROM voters').fetchall()
+    for r in rows:
+        existing_emb = blob_to_embedding(r['embedding']).reshape(1, -1)
+        sim = cosine_similarity(emb.reshape(1, -1), existing_emb)[0][0]
+        if sim > 0.65:  # similarity threshold
+            return jsonify({'success': False, 'error': f'Face already registered as {r["name"]}'}), 400
+    # --------------------------------
+
     try:
         db.execute('INSERT INTO voters (name, embedding) VALUES (?, ?)', (name, embedding_to_blob(emb)))
         db.commit()
@@ -95,19 +117,23 @@ def vote():
     candidate = request.form.get('candidate','').strip()
     if not img_file or not candidate:
         return jsonify({'success': False, 'error': 'image and candidate required'}), 400
+    
     img = Image.open(io.BytesIO(img_file.read())).convert('RGB')
     img = np.array(img)[:, :, ::-1]
     faces = model.get(img)
     if not faces:
         return jsonify({'success': False, 'error': 'no face detected'}), 400
+    
     emb = faces[0].embedding.astype('float32')
     voter_id, name = find_best_match(emb)
     if not voter_id:
         return jsonify({'success': False, 'error': 'no matching voter found'}), 404
+    
     db = get_db()
     existing = db.execute('SELECT * FROM votes WHERE voter_id = ?', (voter_id,)).fetchone()
     if existing:
         return jsonify({'success': False, 'error': 'voter has already voted'}), 403
+    
     db.execute('INSERT INTO votes (voter_id, candidate) VALUES (?, ?)', (voter_id, candidate))
     db.commit()
     return jsonify({'success': True, 'voter': name, 'candidate': candidate})
