@@ -1,7 +1,9 @@
 Face Voting App (ArcFace via InsightFace)\n\nSee requirements.txt for pinned versions.\nRun: python -m venv venv; source venv/bin/activate; pip install -r requirements.txt; python app.py\n
 
 https://chatgpt.com/share/68c6ba47-668c-8011-8125-d96a0f51616c
-# 1) Use Python 3.10 to create venv (run from project folder)
+
+Install Python 3.10 (model requires python 3.10)
+# 1) Use Python 3.10 to create venv (run from project folder) 
 py -3.10 -m venv venv
 
 # 2) Activate the venv
